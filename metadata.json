@@ -1,0 +1,6 @@
+{
+  "name": "Radio Hits Indonesia",
+  "description": "Aplikasi radio online hits Indonesia dengan pemutar musik streaming, stasiun favorit, timer tidur hemat daya baterai, dukungan background playback, dan dark mode.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
