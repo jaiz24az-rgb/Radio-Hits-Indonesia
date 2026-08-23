@@ -97,18 +97,24 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
     }
   }, [stations]);
 
-  // Helper to build list of stream URL candidates (prioritizing backend proxy for maximum cross-origin & codec compatibility)
+  // Helper to build list of stream URL candidates
   const getCandidateUrls = useCallback((station: RadioStation) => {
     const rawList = [station.streamUrl, ...(station.fallbackUrls || [])].filter(Boolean);
     const candidates: string[] = [];
 
     rawList.forEach((url) => {
-      // 1. Backend Proxy (Handles HTTP/HTTPS mixed-content, ICY header, SSL certificate mismatches, and 302 redirects)
-      candidates.push(`/api/stream?url=${encodeURIComponent(url)}`);
-
-      // 2. Direct HTTPS (if https protocol)
       if (url.startsWith('https://')) {
+        // 1. Direct HTTPS first (works natively in browser, zero latency, zero server proxy limit on Vercel/Netlify)
         candidates.push(url);
+        // 2. Backend proxy as fallback (if CORS / ICY headers issue on certain browsers)
+        candidates.push(`/api/stream?url=${encodeURIComponent(url)}`);
+      } else {
+        // HTTP streams must go through the HTTPS proxy on HTTPS deployments (Vercel, Cloud Run)
+        candidates.push(`/api/stream?url=${encodeURIComponent(url)}`);
+        // If app is running on HTTP (e.g. local dev / http), direct HTTP can also be tried
+        if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
+          candidates.push(url);
+        }
       }
     });
 

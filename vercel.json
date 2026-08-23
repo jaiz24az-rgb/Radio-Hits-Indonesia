@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/stream",
+      "destination": "/api/stream"
+    },
+    {
+      "source": "/api/radio-search",
+      "destination": "/api/radio-search"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Range, Content-Type, Icy-MetaData" }
+      ]
+    }
+  ]
+}
