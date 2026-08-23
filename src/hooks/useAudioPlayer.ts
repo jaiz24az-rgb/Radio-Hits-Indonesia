@@ -12,7 +12,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
   const [volume, setVolume] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('radio_volume');
-      return saved ? parseFloat(saved) : 0.85;
+      return saved !== null ? parseFloat(saved) : 0.85;
     } catch {
       return 0.85;
     }
@@ -33,15 +33,21 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerIntervalRef = useRef<number | null>(null);
   const targetVolumeRef = useRef<number>(volume);
+  const isMutedRef = useRef<boolean>(isMuted);
   const currentStationRef = useRef<RadioStation | null>(null);
   const activeUrlIndexRef = useRef<number>(0);
   const isSwitchingRef = useRef<boolean>(false);
   const fallbackCooldownRef = useRef<number>(0);
+  const loadTimeoutRef = useRef<number | null>(null);
 
-  // Keep target volume and currentStation ref synced
+  // Keep refs in sync
   useEffect(() => {
     targetVolumeRef.current = volume;
   }, [volume]);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   useEffect(() => {
     currentStationRef.current = currentStation;
@@ -75,27 +81,11 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
         } catch {
           // ignore
         }
-
-        const handlers: [MediaSessionAction, () => void][] = [
-          ['play', () => play()],
-          ['pause', () => pause()],
-          ['previoustrack', () => playPrevious()],
-          ['nexttrack', () => playNext()],
-          ['stop', () => stop()],
-        ];
-
-        handlers.forEach(([action, handler]) => {
-          try {
-            navigator.mediaSession.setActionHandler(action, handler);
-          } catch {
-            // ignore
-          }
-        });
       }
     } catch {
       // ignore
     }
-  }, [stations]);
+  }, []);
 
   // Helper to build list of stream URL candidates
   const getCandidateUrls = useCallback((station: RadioStation) => {
@@ -104,14 +94,14 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
 
     rawList.forEach((url) => {
       if (url.startsWith('https://')) {
-        // 1. Direct HTTPS first (works natively in browser, zero latency, zero server proxy limit on Vercel/Netlify)
+        // Direct HTTPS stream first (fastest, zero proxy latency)
         candidates.push(url);
-        // 2. Backend proxy as fallback (if CORS / ICY headers issue on certain browsers)
+        // Backend proxy as fallback
         candidates.push(`/api/stream?url=${encodeURIComponent(url)}`);
       } else {
-        // HTTP streams must go through the HTTPS proxy on HTTPS deployments (Vercel, Cloud Run)
+        // HTTP streams through proxy
         candidates.push(`/api/stream?url=${encodeURIComponent(url)}`);
-        // If app is running on HTTP (e.g. local dev / http), direct HTTP can also be tried
+        // If app runs on HTTP (e.g. local dev), direct HTTP also allowed
         if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
           candidates.push(url);
         }
@@ -121,14 +111,15 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
     return candidates.length > 0 ? Array.from(new Set(candidates)) : [station.streamUrl];
   }, []);
 
-  const loadTimeoutRef = useRef<number | null>(null);
-
   const clearLoadTimeout = () => {
     if (loadTimeoutRef.current) {
       clearTimeout(loadTimeoutRef.current);
       loadTimeoutRef.current = null;
     }
   };
+
+  // Ref to hold tryFallback function so event listeners stay stable
+  const tryFallbackRef = useRef<() => void>(() => {});
 
   // Internal helper to play a specific URL for a station
   const playUrlForStation = useCallback((station: RadioStation, urlIndex: number) => {
@@ -152,23 +143,26 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
     }
 
     if (!audioRef.current) {
-      audioRef.current = new Audio();
+      const audio = new Audio();
+      audio.preload = 'auto';
+      audioRef.current = audio;
     }
 
     const audio = audioRef.current;
     isSwitchingRef.current = true;
 
-    // Start 10s watchdog timer in case browser hangs on buffering dead stream
+    // Start 10s watchdog timer in case browser stalls
     loadTimeoutRef.current = window.setTimeout(() => {
-      if (status === 'loading' || isSwitchingRef.current) {
-        tryFallback();
+      if (isSwitchingRef.current) {
+        tryFallbackRef.current();
       }
     }, 10000);
 
     try {
       audio.pause();
       audio.src = streamUrl;
-      audio.volume = isMuted ? 0 : targetVolumeRef.current;
+      audio.volume = isMutedRef.current ? 0 : targetVolumeRef.current;
+      audio.muted = isMutedRef.current;
       audio.load();
 
       const playPromise = audio.play();
@@ -184,7 +178,6 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
           .catch((err) => {
             clearLoadTimeout();
             isSwitchingRef.current = false;
-            // Ignore AbortError if interrupted by another load/station click
             if (err && err.name === 'AbortError') {
               return;
             }
@@ -193,22 +186,21 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
               setErrorMessage('Klik tombol putar untuk memulai siaran.');
               return;
             }
-            // Otherwise try next fallback
-            tryFallback();
+            tryFallbackRef.current();
           });
       }
     } catch {
       clearLoadTimeout();
       isSwitchingRef.current = false;
-      tryFallback();
+      tryFallbackRef.current();
     }
-  }, [isMuted, status, updateMediaSession, getCandidateUrls]);
+  }, [getCandidateUrls, updateMediaSession]);
 
   // Try next fallback URL with debounce guard
   const tryFallback = useCallback(() => {
     const now = Date.now();
-    if (now - fallbackCooldownRef.current < 600) {
-      return; // prevent rapid consecutive loops
+    if (now - fallbackCooldownRef.current < 500) {
+      return;
     }
     fallbackCooldownRef.current = now;
 
@@ -226,52 +218,70 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
     }
   }, [playUrlForStation, getCandidateUrls]);
 
-  // Initialize audio singleton
+  // Keep tryFallbackRef synced
+  useEffect(() => {
+    tryFallbackRef.current = tryFallback;
+  }, [tryFallback]);
+
+  // Initialize audio element ONCE and attach permanent stable event listeners
   useEffect(() => {
     if (!audioRef.current) {
       const audio = new Audio();
       audio.preload = 'auto';
       audioRef.current = audio;
-
-      audio.addEventListener('playing', () => {
-        setStatus('playing');
-        setErrorMessage(null);
-      });
-
-      audio.addEventListener('waiting', () => {
-        setStatus('loading');
-      });
-
-      audio.addEventListener('pause', () => {
-        if (!isSwitchingRef.current) {
-          setStatus((prev) => (prev === 'error' ? 'error' : 'paused'));
-        }
-      });
-
-      audio.addEventListener('error', () => {
-        if (!isSwitchingRef.current) {
-          tryFallback();
-        }
-      });
     }
 
-    return () => {
-      if (audioRef.current) {
-        try {
-          audioRef.current.pause();
-          audioRef.current.removeAttribute('src');
-          audioRef.current.load();
-        } catch {
-          // ignore
-        }
+    const audio = audioRef.current;
+
+    const handlePlaying = () => {
+      clearLoadTimeout();
+      isSwitchingRef.current = false;
+      setStatus('playing');
+      setErrorMessage(null);
+    };
+
+    const handleWaiting = () => {
+      setStatus('loading');
+    };
+
+    const handlePause = () => {
+      if (!isSwitchingRef.current) {
+        setStatus((prev) => (prev === 'error' ? 'error' : 'paused'));
       }
     };
-  }, [tryFallback]);
 
-  // Sync volume
+    const handleError = () => {
+      if (!isSwitchingRef.current) {
+        tryFallbackRef.current();
+      }
+    };
+
+    audio.addEventListener('playing', handlePlaying);
+    audio.addEventListener('waiting', handleWaiting);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('error', handleError);
+
+    return () => {
+      audio.removeEventListener('playing', handlePlaying);
+      audio.removeEventListener('waiting', handleWaiting);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('error', handleError);
+      clearLoadTimeout();
+      try {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      } catch {
+        // ignore
+      }
+    };
+  }, []); // Run only once on mount
+
+  // Sync volume and mute to audio element
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : volume;
+      audioRef.current.volume = isMuted ? 0 : Math.max(0, Math.min(1, volume));
+      audioRef.current.muted = isMuted;
     }
     try {
       localStorage.setItem('radio_volume', volume.toString());
@@ -297,7 +307,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
     }
   }, [status]);
 
-  // Play a specific station from beginning
+  // Play a specific station
   const playStation = useCallback((station: RadioStation) => {
     setCurrentStation(station);
     currentStationRef.current = station;
@@ -314,7 +324,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
     }
   }, [playUrlForStation]);
 
-  // Retry or switch server manually
+  // Manual server switch
   const switchServer = useCallback(() => {
     const station = currentStationRef.current;
     if (!station) return;
@@ -329,7 +339,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
     playUrlForStation(station, 0);
   }, [playUrlForStation]);
 
-  // Play/Resume
+  // Play / Resume
   const play = useCallback(() => {
     const station = currentStationRef.current;
     if (!station) {
@@ -354,14 +364,14 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
               setStatus('paused');
               setErrorMessage('Klik tombol putar untuk memulai siaran.');
             } else {
-              tryFallback();
+              tryFallbackRef.current();
             }
           });
       }
     } else {
       playUrlForStation(station, activeUrlIndexRef.current);
     }
-  }, [stations, playStation, playUrlForStation, tryFallback]);
+  }, [stations, playStation, playUrlForStation]);
 
   // Pause
   const pause = useCallback(() => {
@@ -406,6 +416,27 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
     playStation(stations[prevIndex]);
   }, [currentStation, stations, playStation]);
 
+  // Setup MediaSession handlers
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'mediaSession' in navigator && navigator.mediaSession) {
+      const handlers: [MediaSessionAction, () => void][] = [
+        ['play', () => play()],
+        ['pause', () => pause()],
+        ['previoustrack', () => playPrevious()],
+        ['nexttrack', () => playNext()],
+        ['stop', () => stop()],
+      ];
+
+      handlers.forEach(([action, handler]) => {
+        try {
+          navigator.mediaSession.setActionHandler(action, handler);
+        } catch {
+          // ignore
+        }
+      });
+    }
+  }, [play, pause, playPrevious, playNext, stop]);
+
   // Sleep Timer logic
   const startSleepTimer = useCallback((minutes: number, fadeOut = true) => {
     if (timerIntervalRef.current) {
@@ -434,7 +465,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
       setSleepTimer((prev) => {
         if (!prev.isActive || prev.remainingSeconds <= 1) {
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-          
+
           if (audioRef.current) {
             audioRef.current.pause();
             setStatus('paused');
@@ -469,7 +500,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
       timerIntervalRef.current = null;
     }
     if (audioRef.current) {
-      audioRef.current.volume = isMuted ? 0 : targetVolumeRef.current;
+      audioRef.current.volume = isMutedRef.current ? 0 : targetVolumeRef.current;
     }
     setSleepTimer({
       isActive: false,
@@ -477,7 +508,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
       initialMinutes: 0,
       fadeOut: true,
     });
-  }, [isMuted]);
+  }, []);
 
   useEffect(() => {
     return () => {
