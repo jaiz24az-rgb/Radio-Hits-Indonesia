@@ -1,6 +1,7 @@
 import React from 'react';
 import { Play, Pause, Heart, Radio, Loader2, Volume2, Sparkles } from 'lucide-react';
 import { RadioStation, PlaybackStatus } from '../types';
+import { StationLogo } from './StationLogo';
 
 interface StationCardProps {
   station: RadioStation;
@@ -31,20 +32,15 @@ export const StationCard: React.FC<StationCardProps> = ({
           : 'bg-slate-900/60 hover:bg-slate-800/80 border-slate-800 hover:border-slate-700/80 hover:shadow-md'
       }`}
     >
-      {/* Top row: Monogram / Logo & Actions */}
+      {/* Top row: Logo & Actions */}
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
-          {/* Station Visual Badge */}
-          <div
-            className={`relative flex items-center justify-center w-12 h-12 rounded-xl text-white font-bold text-base shadow-md bg-gradient-to-tr ${station.accentGradient} flex-shrink-0`}
-          >
-            {station.name.substring(0, 2).toUpperCase()}
-            {isPlaying && (
-              <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-slate-900 ring-2 ring-slate-900">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-              </span>
-            )}
-          </div>
+          {/* Station Visual Logo */}
+          <StationLogo
+            station={station}
+            size="md"
+            isPlaying={isPlaying}
+          />
 
           {/* Station Name & Frequency */}
           <div className="overflow-hidden">

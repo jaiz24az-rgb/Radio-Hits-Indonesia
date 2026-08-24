@@ -23,6 +23,7 @@ import {
   Server
 } from 'lucide-react';
 import { RadioStation, PlaybackStatus, SleepTimerState } from '../types';
+import { StationLogo } from './StationLogo';
 
 interface FullPlayerModalProps {
   isOpen: boolean;
@@ -166,20 +167,19 @@ export const FullPlayerModal: React.FC<FullPlayerModalProps> = ({
               />
             )}
 
-            <div
-              className={`relative w-44 h-44 sm:w-52 sm:h-52 rounded-3xl flex flex-col items-center justify-center p-6 text-center shadow-2xl bg-gradient-to-tr ${station.accentGradient} border border-white/20`}
-            >
-              <Radio className="w-14 h-14 mb-2 text-white drop-shadow-md" />
-              <span className="text-2xl font-black tracking-tight text-white drop-shadow">
-                {station.frequency}
-              </span>
-              <span className="text-xs font-semibold text-white/80 uppercase tracking-wider mt-1">
-                {station.city}
-              </span>
+            <div className="relative flex flex-col items-center">
+              <StationLogo
+                station={station}
+                size="xl"
+                isPlaying={isPlaying}
+                className="shadow-2xl ring-1 ring-white/20"
+              />
 
-              {/* Bitrate & Category badge inside artwork */}
-              <div className="absolute bottom-3 flex items-center gap-1.5 bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-full text-[10px] font-mono text-white/90 border border-white/10">
+              {/* Bitrate badge below artwork */}
+              <div className="mt-3 flex items-center gap-1.5 bg-slate-800/80 backdrop-blur-md px-3 py-1 rounded-full text-xs font-mono text-slate-300 border border-slate-700/60">
                 <Signal className="w-3 h-3 text-emerald-400" />
+                <span>{station.frequency}</span>
+                <span>•</span>
                 <span>{station.bitrate || '128 kbps'}</span>
               </div>
             </div>

@@ -16,6 +16,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { RadioStation, PlaybackStatus, SleepTimerState } from '../types';
+import { StationLogo } from './StationLogo';
 
 interface PlayerBarProps {
   currentStation: RadioStation | null;
@@ -112,18 +113,12 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
           onClick={onOpenFullPlayer}
           className="flex items-center gap-3 cursor-pointer group min-w-0 max-w-[40%] sm:max-w-sm"
         >
-          {/* Station Visual Thumbnail */}
-          <div
-            className={`relative flex items-center justify-center w-11 h-11 rounded-xl text-white font-bold text-sm shadow-md bg-gradient-to-tr ${currentStation.accentGradient} flex-shrink-0`}
-          >
-            {currentStation.name.substring(0, 2).toUpperCase()}
-            {isPlaying && (
-              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-              </span>
-            )}
-          </div>
+          {/* Station Visual Logo */}
+          <StationLogo
+            station={currentStation}
+            size="md"
+            isPlaying={isPlaying}
+          />
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { RadioStation, Category, City } from '../types';
 import { CITIES } from '../data/stations';
+import { StationLogo } from './StationLogo';
 
 interface AddStationModalProps {
   isOpen: boolean;
@@ -473,6 +474,13 @@ export const AddStationModal: React.FC<AddStationModalProps> = ({
                               <Play className="w-4 h-4 ml-0.5 fill-current" />
                             )}
                           </button>
+
+                          {/* Station Logo Badge */}
+                          <StationLogo
+                            station={station}
+                            size="sm"
+                            isPlaying={isPreviewing}
+                          />
 
                           {/* Station Details */}
                           <div className="min-w-0 flex-1">
