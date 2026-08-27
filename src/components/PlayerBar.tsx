@@ -111,26 +111,27 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         <div
           id="mini-player-info-section"
           onClick={onOpenFullPlayer}
-          className="flex items-center gap-3 cursor-pointer group min-w-0 max-w-[40%] sm:max-w-sm"
+          className="flex items-center gap-3 cursor-pointer group min-w-0 max-w-[50%] sm:max-w-sm"
         >
           {/* Station Visual Logo */}
           <StationLogo
             station={currentStation}
             size="md"
             isPlaying={isPlaying}
+            className="shrink-0"
           />
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <div className="flex items-center gap-2 min-w-0">
               <h4 className="font-semibold text-sm text-slate-100 group-hover:text-red-400 transition truncate">
                 {currentStation.name}
               </h4>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-800 text-red-400 border border-slate-700/80 hidden sm:inline-block">
+              <span className="shrink-0 text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-800 text-red-400 border border-slate-700/80 hidden sm:inline-block">
                 {currentStation.frequency}
               </span>
             </div>
-            <p className="text-xs text-slate-400 truncate flex items-center gap-1.5">
-              <span>{currentStation.city}</span>
+            <p className="text-xs text-slate-400 truncate flex items-center gap-1.5 min-w-0">
+              <span className="shrink-0">{currentStation.city}</span>
               <span>•</span>
               <span className="truncate">{currentStation.tagline}</span>
             </p>
@@ -142,7 +143,7 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
               e.stopPropagation();
               onToggleFavorite(currentStation.id);
             }}
-            className="p-1.5 text-slate-400 hover:text-rose-400 transition hidden sm:block"
+            className="p-1.5 text-slate-400 hover:text-rose-400 transition hidden sm:block shrink-0"
             title={isFavorite ? 'Hapus dari Favorit' : 'Tambah ke Favorit'}
           >
             <Heart className={`w-4 h-4 ${isFavorite ? 'fill-rose-500 text-rose-500' : ''}`} />

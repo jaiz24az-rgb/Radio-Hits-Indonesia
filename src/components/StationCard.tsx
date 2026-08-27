@@ -26,31 +26,30 @@ export const StationCard: React.FC<StationCardProps> = ({
     <div
       id={`station-card-${station.id}`}
       onClick={() => onPlay(station)}
-      className={`group relative flex flex-col justify-between p-4 rounded-2xl border transition-all duration-200 cursor-pointer select-none text-left ${
+      className={`group relative flex flex-col justify-between p-4 rounded-2xl border transition-all duration-200 cursor-pointer select-none text-left overflow-hidden ${
         isPlaying
           ? 'bg-gradient-to-br from-slate-800/95 via-slate-900/95 to-red-950/40 border-red-500/50 shadow-lg shadow-red-950/30 ring-1 ring-red-500/30'
           : 'bg-slate-900/60 hover:bg-slate-800/80 border-slate-800 hover:border-slate-700/80 hover:shadow-md'
       }`}
     >
       {/* Top row: Logo & Actions */}
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-center gap-3">
+      <div className="flex items-start justify-between gap-2.5 mb-3 w-full min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1 overflow-hidden">
           {/* Station Visual Logo */}
           <StationLogo
             station={station}
             size="md"
             isPlaying={isPlaying}
+            className="shrink-0"
           />
 
           {/* Station Name & Frequency */}
-          <div className="overflow-hidden">
-            <div className="flex items-center gap-2">
-              <h3 className="font-semibold text-sm sm:text-base text-slate-100 group-hover:text-white truncate">
-                {station.name}
-              </h3>
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="font-mono text-xs font-semibold px-1.5 py-0.2 rounded bg-slate-800 text-red-400 border border-slate-700">
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <h3 className="font-semibold text-sm sm:text-base text-slate-100 group-hover:text-white truncate leading-snug">
+              {station.name}
+            </h3>
+            <div className="flex items-center gap-1.5 mt-1 min-w-0">
+              <span className="shrink-0 font-mono text-[11px] font-semibold px-1.5 py-0.5 rounded bg-slate-800 text-red-400 border border-slate-700/80 leading-none">
                 {station.frequency}
               </span>
               <span className="text-xs text-slate-400 truncate">
@@ -67,7 +66,7 @@ export const StationCard: React.FC<StationCardProps> = ({
             e.stopPropagation();
             onToggleFavorite(station.id);
           }}
-          className={`p-2 rounded-xl transition-all ${
+          className={`shrink-0 p-1.5 sm:p-2 rounded-xl transition-all ${
             isFavorite
               ? 'text-rose-500 hover:text-rose-400 bg-rose-500/10'
               : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
