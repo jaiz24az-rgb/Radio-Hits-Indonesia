@@ -40,7 +40,20 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
   const fallbackCooldownRef = useRef<number>(0);
   const loadTimeoutRef = useRef<number | null>(null);
 
+  // Auto-recovery & Keep-alive refs
+  const userPausedRef = useRef<boolean>(true);
+  const statusRef = useRef<PlaybackStatus>(status);
+  const reconnectCooldownRef = useRef<number>(0);
+  const stalledTimerRef = useRef<number | null>(null);
+  const lastCurrentTimeRef = useRef<number>(0);
+  const lastProgressTimeRef = useRef<number>(Date.now());
+  const reconnectRef = useRef<() => void>(() => {});
+
   // Keep refs in sync
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
   useEffect(() => {
     targetVolumeRef.current = volume;
   }, [volume]);
@@ -121,22 +134,40 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
   // Ref to hold tryFallback function so event listeners stay stable
   const tryFallbackRef = useRef<() => void>(() => {});
 
+  const clearStalledTimeout = () => {
+    if (stalledTimerRef.current) {
+      clearTimeout(stalledTimerRef.current);
+      stalledTimerRef.current = null;
+    }
+  };
+
   // Internal helper to play a specific URL for a station
-  const playUrlForStation = useCallback((station: RadioStation, urlIndex: number) => {
+  const playUrlForStation = useCallback((station: RadioStation, urlIndex: number, isReconnect = false) => {
     clearLoadTimeout();
+    clearStalledTimeout();
     const urls = getCandidateUrls(station);
     if (urlIndex >= urls.length) {
       setStatus('error');
+      statusRef.current = 'error';
       setErrorMessage('Siaran radio sedang offline atau server tidak merespons. Silakan coba stasiun lain.');
       return;
     }
 
-    const streamUrl = urls[urlIndex];
+    let streamUrl = urls[urlIndex];
+    if (isReconnect) {
+      const sep = streamUrl.includes('?') ? '&' : '?';
+      streamUrl = `${streamUrl}${sep}_t=${Date.now()}`;
+    }
+
     setActiveUrlIndex(urlIndex);
     activeUrlIndexRef.current = urlIndex;
     setStatus('loading');
+    statusRef.current = 'loading';
+    userPausedRef.current = false;
 
-    if (urlIndex > 0) {
+    if (isReconnect) {
+      setErrorMessage('Menyambung ulang siaran radio...');
+    } else if (urlIndex > 0) {
       setErrorMessage(`Menghubungkan ke jalur cadangan ${urlIndex + 1}/${urls.length}...`);
     } else {
       setErrorMessage(null);
@@ -170,9 +201,13 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
         playPromise
           .then(() => {
             clearLoadTimeout();
+            clearStalledTimeout();
             isSwitchingRef.current = false;
             setStatus('playing');
+            statusRef.current = 'playing';
             setErrorMessage(null);
+            lastProgressTimeRef.current = Date.now();
+            lastCurrentTimeRef.current = audio.currentTime;
             updateMediaSession(station);
           })
           .catch((err) => {
@@ -183,6 +218,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
             }
             if (err && err.name === 'NotAllowedError') {
               setStatus('paused');
+              statusRef.current = 'paused';
               setErrorMessage('Klik tombol putar untuk memulai siaran.');
               return;
             }
@@ -214,14 +250,33 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
       playUrlForStation(station, nextIndex);
     } else {
       setStatus('error');
+      statusRef.current = 'error';
       setErrorMessage('Siaran radio sedang offline atau server tidak merespons. Silakan coba stasiun lain.');
     }
   }, [playUrlForStation, getCandidateUrls]);
 
-  // Keep tryFallbackRef synced
+  // Auto-reconnect to current station
+  const reconnectCurrentStation = useCallback(() => {
+    const now = Date.now();
+    if (now - reconnectCooldownRef.current < 1500) {
+      return;
+    }
+    reconnectCooldownRef.current = now;
+
+    const station = currentStationRef.current;
+    if (!station || userPausedRef.current) return;
+
+    playUrlForStation(station, activeUrlIndexRef.current, true);
+  }, [playUrlForStation]);
+
+  // Keep refs synced
   useEffect(() => {
     tryFallbackRef.current = tryFallback;
   }, [tryFallback]);
+
+  useEffect(() => {
+    reconnectRef.current = reconnectCurrentStation;
+  }, [reconnectCurrentStation]);
 
   // Initialize audio element ONCE and attach permanent stable event listeners
   useEffect(() => {
@@ -235,18 +290,57 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
 
     const handlePlaying = () => {
       clearLoadTimeout();
+      clearStalledTimeout();
       isSwitchingRef.current = false;
       setStatus('playing');
+      statusRef.current = 'playing';
       setErrorMessage(null);
+      lastProgressTimeRef.current = Date.now();
+      lastCurrentTimeRef.current = audio.currentTime;
     };
 
     const handleWaiting = () => {
-      setStatus('loading');
+      if (!userPausedRef.current) {
+        setStatus('loading');
+        statusRef.current = 'loading';
+      }
+    };
+
+    const handleStalled = () => {
+      if (!userPausedRef.current && !isSwitchingRef.current) {
+        if (!stalledTimerRef.current) {
+          stalledTimerRef.current = window.setTimeout(() => {
+            stalledTimerRef.current = null;
+            if (!userPausedRef.current && !isSwitchingRef.current) {
+              reconnectRef.current();
+            }
+          }, 5000);
+        }
+      }
+    };
+
+    const handleEnded = () => {
+      // Live streams should not terminate. If server drops connection, reconnect immediately.
+      if (!userPausedRef.current && !isSwitchingRef.current) {
+        reconnectRef.current();
+      }
     };
 
     const handlePause = () => {
       if (!isSwitchingRef.current) {
-        setStatus((prev) => (prev === 'error' ? 'error' : 'paused'));
+        if (userPausedRef.current) {
+          setStatus((prev) => (prev === 'error' ? 'error' : 'paused'));
+          statusRef.current = 'paused';
+        } else {
+          // Unexpected pause (browser background throttle or buffer underflow)
+          setTimeout(() => {
+            if (!userPausedRef.current && audioRef.current?.paused) {
+              audioRef.current.play().catch(() => {
+                reconnectRef.current();
+              });
+            }
+          }, 800);
+        }
       }
     };
 
@@ -258,15 +352,20 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
 
     audio.addEventListener('playing', handlePlaying);
     audio.addEventListener('waiting', handleWaiting);
+    audio.addEventListener('stalled', handleStalled);
+    audio.addEventListener('ended', handleEnded);
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('error', handleError);
 
     return () => {
       audio.removeEventListener('playing', handlePlaying);
       audio.removeEventListener('waiting', handleWaiting);
+      audio.removeEventListener('stalled', handleStalled);
+      audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('error', handleError);
       clearLoadTimeout();
+      clearStalledTimeout();
       try {
         audio.pause();
         audio.removeAttribute('src');
@@ -276,6 +375,66 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
       }
     };
   }, []); // Run only once on mount
+
+  // Heartbeat watchdog & background tab wake-up
+  useEffect(() => {
+    const watchdogInterval = window.setInterval(() => {
+      if (userPausedRef.current || !currentStationRef.current || !audioRef.current) {
+        return;
+      }
+
+      const audio = audioRef.current;
+      const now = Date.now();
+
+      // If marked as playing but HTML5 audio element paused unexpectedly
+      if (statusRef.current === 'playing' && audio.paused) {
+        audio.play().catch(() => {
+          reconnectRef.current();
+        });
+        return;
+      }
+
+      // Check if currentTime is advancing when supposed to be playing
+      if (statusRef.current === 'playing') {
+        const curTime = audio.currentTime;
+        if (curTime > lastCurrentTimeRef.current + 0.05) {
+          lastCurrentTimeRef.current = curTime;
+          lastProgressTimeRef.current = now;
+        } else if (now - lastProgressTimeRef.current > 7000) {
+          // Buffer has been frozen for > 7s, reconnect fresh stream
+          lastProgressTimeRef.current = now;
+          reconnectRef.current();
+        }
+      }
+    }, 3500);
+
+    // Auto-resume when PC reconnects to Wi-Fi / network
+    const handleOnline = () => {
+      if (!userPausedRef.current && currentStationRef.current) {
+        reconnectRef.current();
+      }
+    };
+
+    // Auto-resume when switching back to tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !userPausedRef.current && currentStationRef.current) {
+        if (audioRef.current?.paused) {
+          audioRef.current.play().catch(() => {
+            reconnectRef.current();
+          });
+        }
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(watchdogInterval);
+      window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   // Sync volume and mute to audio element
   useEffect(() => {
@@ -341,6 +500,7 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
 
   // Play / Resume
   const play = useCallback(() => {
+    userPausedRef.current = false;
     const station = currentStationRef.current;
     if (!station) {
       if (stations.length > 0) {
@@ -351,17 +511,20 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
 
     if (audioRef.current && audioRef.current.src) {
       setStatus('loading');
+      statusRef.current = 'loading';
       setErrorMessage(null);
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
         playPromise
           .then(() => {
             setStatus('playing');
+            statusRef.current = 'playing';
             setErrorMessage(null);
           })
           .catch((err) => {
             if (err && err.name === 'NotAllowedError') {
               setStatus('paused');
+              statusRef.current = 'paused';
               setErrorMessage('Klik tombol putar untuk memulai siaran.');
             } else {
               tryFallbackRef.current();
@@ -375,9 +538,11 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
 
   // Pause
   const pause = useCallback(() => {
+    userPausedRef.current = true;
     if (audioRef.current) {
       audioRef.current.pause();
       setStatus('paused');
+      statusRef.current = 'paused';
     }
   }, []);
 
@@ -392,11 +557,13 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
 
   // Stop
   const stop = useCallback(() => {
+    userPausedRef.current = true;
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.removeAttribute('src');
       audioRef.current.load();
       setStatus('idle');
+      statusRef.current = 'idle';
     }
   }, []);
 
@@ -467,8 +634,10 @@ export function useAudioPlayer({ stations, batterySaverMode }: UseAudioPlayerPro
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
           if (audioRef.current) {
+            userPausedRef.current = true;
             audioRef.current.pause();
             setStatus('paused');
+            statusRef.current = 'paused';
           }
 
           return {

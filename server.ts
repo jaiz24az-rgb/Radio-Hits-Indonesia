@@ -131,6 +131,11 @@ async function startServer() {
       return;
     }
 
+    // Disable socket timeouts for continuous live streaming
+    req.socket.setTimeout(0);
+    res.socket?.setTimeout(0);
+    req.socket.setKeepAlive(true, 10000);
+
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(targetUrl);
@@ -164,12 +169,14 @@ async function startServer() {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 RadioPlayer/2.0',
           'Accept': '*/*',
           'Icy-MetaData': '0',
-          'Connection': 'close',
+          'Connection': 'keep-alive',
         },
-        timeout: 12000,
       };
 
       const proxyReq = client.request(options, (proxyRes) => {
+        // Disable request socket timeout once connection established & streaming
+        proxyReq.setTimeout(0);
+
         // Handle HTTP 301, 302, 303, 307, 308 redirects properly
         if (
           proxyRes.statusCode &&
@@ -223,9 +230,10 @@ async function startServer() {
         });
       });
 
-      proxyReq.on('timeout', () => {
-        proxyReq.destroy();
+      // Timeout ONLY applies during initial connection phase (15s)
+      proxyReq.setTimeout(15000, () => {
         if (!res.headersSent) {
+          proxyReq.destroy();
           res.status(504).send('Stream connection timeout');
         }
       });
