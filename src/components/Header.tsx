@@ -1,6 +1,7 @@
 import React from 'react';
-import { Radio, Moon, Sun, ShieldAlert, Battery, BatteryCharging, Clock, Plus, Zap } from 'lucide-react';
+import { Radio, Moon, Sun, ShieldAlert, Battery, BatteryCharging, Clock, Plus, Zap, Download, Monitor } from 'lucide-react';
 import { ThemeMode, BatteryInfo, SleepTimerState } from '../types';
+import { BrandLogo } from './BrandLogo';
 
 interface HeaderProps {
   theme: ThemeMode;
@@ -11,6 +12,7 @@ interface HeaderProps {
   sleepTimer: SleepTimerState;
   onOpenSleepTimer: () => void;
   onOpenAddStation: () => void;
+  onOpenInstallModal: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
 }
@@ -24,6 +26,7 @@ export const Header: React.FC<HeaderProps> = ({
   sleepTimer,
   onOpenSleepTimer,
   onOpenAddStation,
+  onOpenInstallModal,
   searchQuery,
   onSearchChange,
 }) => {
@@ -46,20 +49,14 @@ export const Header: React.FC<HeaderProps> = ({
         bg-slate-900/90 border-slate-800 text-white"
     >
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
-        {/* Brand & Live Indicator */}
+        {/* Brand & Live Indicator with Official Logo */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 via-rose-500 to-amber-500 shadow-md shadow-red-900/20 text-white">
-              <Radio className="w-5 h-5 animate-pulse" />
-              <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-              </span>
-            </div>
+            <BrandLogo size="md" />
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-lg sm:text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
-                  Radio Hits Indonesia
+                <h1 className="text-lg sm:text-xl font-black italic tracking-tight text-white">
+                  Radio Hit <span className="text-red-500">Indonesia</span>
                 </h1>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
                   LIVE
@@ -73,12 +70,22 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Mobile Right Controls */}
           <div className="flex items-center gap-1.5 md:hidden">
+            {/* Install Desktop / Mobile Button */}
+            <button
+              id="mobile-install-app-btn"
+              onClick={onOpenInstallModal}
+              title="Pasang Icon Aplikasi ke Layar Utama / Desktop"
+              className="p-2 rounded-lg bg-red-600/20 text-red-300 border border-red-500/40 hover:bg-red-600/30 transition"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+
             {/* Auto Search / Add Station Mobile */}
             <button
               id="mobile-add-station-btn"
               onClick={onOpenAddStation}
               title="Cari & Tambah Stasiun Radio Online"
-              className="p-2 rounded-lg bg-red-600/20 text-red-300 border border-red-500/40 hover:bg-red-600/30 transition"
+              className="p-2 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -199,6 +206,17 @@ export const Header: React.FC<HeaderProps> = ({
                 ? `Tidur: ${formatTimerRemaining(sleepTimer.remainingSeconds)}`
                 : 'Timer Tidur'}
             </span>
+          </button>
+
+          {/* Install Desktop App Button */}
+          <button
+            id="desktop-install-app-btn"
+            onClick={onOpenInstallModal}
+            className="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/80 hover:border-red-500/40 transition shadow-sm"
+            title="Pasang Icon Aplikasi ke Desktop Komputer (Akses 1-Klik)"
+          >
+            <Monitor className="w-3.5 h-3.5 text-red-400" />
+            <span>Pasang di Desktop</span>
           </button>
 
           {/* Add custom station button */}

@@ -257,6 +257,21 @@ async function startServer() {
     fetchStream(parsedUrl);
   });
 
+  // Explicit PWA manifest & favicon routes with correct MIME types
+  app.get(['/manifest.webmanifest', '/manifest.json'], (req: Request, res: Response) => {
+    const manifestPath = path.join(process.cwd(), 'public', 'manifest.webmanifest');
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    res.sendFile(manifestPath);
+  });
+
+  app.get('/favicon.ico', (req: Request, res: Response) => {
+    const faviconPath = path.join(process.cwd(), 'public', 'favicon.ico');
+    res.setHeader('Content-Type', 'image/x-icon');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(faviconPath);
+  });
+
   // Vite middleware in dev / Static files in production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

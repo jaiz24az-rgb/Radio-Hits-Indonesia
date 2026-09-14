@@ -11,6 +11,8 @@ import { FullPlayerModal } from './components/FullPlayerModal';
 import { SleepTimerModal } from './components/SleepTimerModal';
 import { AddStationModal } from './components/AddStationModal';
 import { BatterySaverBanner } from './components/BatterySaverBanner';
+import { InstallAppModal } from './components/InstallAppModal';
+import { InstallBanner } from './components/InstallBanner';
 import { Radio, Heart, Sparkles, Plus, AlertCircle, Volume2, Moon, Sun, Smartphone } from 'lucide-react';
 
 export default function App() {
@@ -58,6 +60,7 @@ export default function App() {
   const [isFullPlayerOpen, setIsFullPlayerOpen] = useState<boolean>(false);
   const [isSleepTimerOpen, setIsSleepTimerOpen] = useState<boolean>(false);
   const [isAddStationOpen, setIsAddStationOpen] = useState<boolean>(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
 
   // Audio engine
   const {
@@ -205,9 +208,13 @@ export default function App() {
         sleepTimer={sleepTimer}
         onOpenSleepTimer={() => setIsSleepTimerOpen(true)}
         onOpenAddStation={() => setIsAddStationOpen(true)}
+        onOpenInstallModal={() => setIsInstallModalOpen(true)}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       />
+
+      {/* PWA / Desktop Install Banner */}
+      <InstallBanner onOpenModal={() => setIsInstallModalOpen(true)} />
 
       {/* Main Content Area */}
       <main id="main-content-container" className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6">
@@ -446,6 +453,12 @@ export default function App() {
         onAddMultipleStations={handleAddMultipleStations}
         existingStationUrls={stations.map((s) => s.streamUrl)}
         existingStationNames={stations.map((s) => s.name)}
+      />
+
+      {/* Install App / Desktop Shortcut Modal */}
+      <InstallAppModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
       />
     </div>
   );
